@@ -27,7 +27,7 @@ geometry:
     x2min: 0.
     x2max: 1.6e6
     x3min: 0.
-    x3max: 1.
+    x3max: 1.6e6
 
   cells:
     nx1: 80
@@ -79,7 +79,7 @@ boundary-condition:
 
 integration:
   type: rk3
-  cfl: 0.9
+  cfl: 0.45
   implicit-scheme: 9
   nlim: -1
   tlim: 1.728e10
@@ -120,7 +120,7 @@ problem:
 bottom-relaxation:
   enabled: true
   depth_levels: 2
-  tau_bottom: 1.0e4
+  tau_bottom: 5.0e4
   tau_top: 1.0e5
   target_temp: 250.
 
@@ -146,12 +146,12 @@ drag:
     enabled: false
     tau: 0.0
   sponge_top:
-    enabled: false
+    enabled: true
     p_start: 2.0e4
     p_end: 1.0e3
     tau: 3.0e4
   sponge_bottom:
-    enabled: false
+    enabled: true
     p_start: 8.0e5
     p_end: 3.0e6
     tau: 3.0e4

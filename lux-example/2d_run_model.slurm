@@ -3,7 +3,7 @@
 #SBATCH --partition=gpuq
 #SBATCH --account=gpuq
 #SBATCH --nodes=1               # Request 3 physical machines
-#SBATCH --ntasks=2              # Request 6 total tasks (forces Lux to give 6 GPUs)
+#SBATCH --ntasks=1              # Single launcher task; torchrun spawns worker processes
 #SBATCH --cpus-per-task=20      # Give 20 CPUs per task (Lots of CPU power for NCCL/MPI)
 #SBATCH --mem=0                 # Request all available RAM on the node
 #SBATCH --exclusive             # Guarantee no other users are on these nodes!
@@ -36,7 +36,7 @@ else
     RESTART_ARG="--restart-name $RESTART_FILE"
 fi
 
-srun -N 1 --ntasks=2 --ntasks-per-node=2 \
+srun -N 1 --ntasks=1 --ntasks-per-node=1 \
   udocker run \
   --entrypoint="" \
   --device=/dev/nvidiactl \

@@ -3,8 +3,8 @@
 #SBATCH --partition=gpuq
 #SBATCH --account=gpuq
 #SBATCH --nodes=3               # Request 3 physical machines
-#SBATCH --ntasks=6              # Request 6 total tasks (forces Lux to give 6 GPUs)
-#SBATCH --cpus-per-task=20      # Give 20 CPUs per task (Lots of CPU power for NCCL/MPI)
+#SBATCH --ntasks=3              # One launcher task per node; torchrun spawns GPU workers
+#SBATCH --cpus-per-task=20      # CPUs per launcher task (torchrun local workers share these)
 #SBATCH --mem=0                 # Request all available RAM on the node
 #SBATCH --exclusive             # Guarantee no other users are on these nodes!
 #SBATCH --time=24:00:00         # Max time allowed in gpuq
@@ -15,7 +15,7 @@
 set -e
 
 echo "=========================================================="
-echo "Starting 6-GPU Sub-Neptune Job on Date: $(date)"
+echo "Starting 6-GPU cubed-sphere job on Date: $(date)"
 echo "Nodes assigned by Slurm: $SLURM_JOB_NODELIST"
 echo "=========================================================="
 
