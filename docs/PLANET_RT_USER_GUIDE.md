@@ -67,23 +67,43 @@ drag:
     tau: 0.0
   sponge_top:
     enabled: true
-    p_start: 2.0e4
-    p_end: 1.0e3
+    thickness: 1.5e5
+    n_layers: 6
     tau: 3.0e4
   sponge_bottom:
     enabled: true
-    p_start: 8.0e5
-    p_end: 3.0e6
+    thickness: 5.0e4
+    n_layers: 6
     tau: 3.0e4
   coeff_max: 0.0
 ```
 
 Notes:
-- The sponge ramp uses a smooth `sin^2` profile in pressure space.
+- The sponge ramp uses a smooth `sin^2` profile.
+- If `thickness > 0`, sponge is altitude-based over that many meters from top/bottom boundary.
+- If `thickness <= 0` (or omitted), sponge uses layer-count mode with `n_layers`.
+- `n_layers` defaults to `6` if omitted.
 - `tau` is damping timescale in seconds (`1/tau` is local drag coefficient).
 - `uniform` and sponge coefficients add together.
 - `coeff_max > 0` caps total drag coefficient.
 - Set `drag.enabled: false` to turn everything off.
+
+Layer-based example:
+
+```yaml
+drag:
+  enabled: true
+  sponge_top:
+    enabled: true
+    thickness: 0.0
+    n_layers: 6
+    tau: 3.0e4
+  sponge_bottom:
+    enabled: true
+    thickness: 0.0
+    n_layers: 6
+    tau: 3.0e4
+```
 
 ## 4) How many GPU cards should I use?
 

@@ -66,12 +66,13 @@ class DragConfig:
     uniform_tau: float
     top_enabled: bool
     top_tau: float
-    top_p_start: float
-    top_p_end: float
+    top_thickness: float
+    top_n_layers: int
     bottom_enabled: bool
     bottom_tau: float
-    bottom_p_start: float
-    bottom_p_end: float
+    bottom_thickness: float
+    bottom_n_layers: int
+    z_levels: Optional[torch.Tensor]  # (nlyr,)
     coeff_max: float
 
 
@@ -312,12 +313,13 @@ def _build_drag_config(config: dict[str, Any]) -> DragConfig:
         uniform_tau=max(float(uniform_raw.get("tau", 0.0)), 0.0),
         top_enabled=bool(top_raw.get("enabled", False)),
         top_tau=max(float(top_raw.get("tau", 0.0)), 0.0),
-        top_p_start=float(top_raw.get("p_start", 1.0e4)),
-        top_p_end=float(top_raw.get("p_end", 1.0e3)),
+        top_thickness=max(float(top_raw.get("thickness", 0.0)), 0.0),
+        top_n_layers=max(int(top_raw.get("n_layers", 6)), 0),
         bottom_enabled=bool(bot_raw.get("enabled", False)),
         bottom_tau=max(float(bot_raw.get("tau", 0.0)), 0.0),
-        bottom_p_start=float(bot_raw.get("p_start", 1.0e6)),
-        bottom_p_end=float(bot_raw.get("p_end", 3.0e6)),
+        bottom_thickness=max(float(bot_raw.get("thickness", 0.0)), 0.0),
+        bottom_n_layers=max(int(bot_raw.get("n_layers", 6)), 0),
+        z_levels=None,
         coeff_max=max(float(drag_raw.get("coeff_max", 0.0)), 0.0),
     )
 
@@ -455,6 +457,7 @@ def build_rt_state(
         target_temp_levels=target_levels,
     )
     drag_cfg = _build_drag_config(config)
+    drag_cfg.z_levels = coord.buffer("x1v")[il : iu + 1].to(device)
 
     output_cfg_raw = config.get("radiative-transfer-output", {})
     output_cfg = RadiativeTransferOutputConfig(
@@ -806,14 +809,67 @@ def _apply_bottom_temp_relaxation(
     hydro_u[kIPR, ..., il : il + depth] += dpdt * dt
 
 
-def _sine2_ramp(pres: torch.Tensor, p_start: float, p_end: float) -> torch.Tensor:
-    span = float(p_end - p_start)
+def _sine2_ramp(coord: torch.Tensor, start: float, end: float) -> torch.Tensor:
+    span = float(end - start)
     if abs(span) < 1.0e-20:
-        return torch.zeros_like(pres)
+        return torch.zeros_like(coord)
 
-    eta = (pres - p_start) / span
+    eta = (coord - start) / span
     eta = torch.clamp(eta, min=0.0, max=1.0)
     return torch.sin(0.5 * math.pi * eta).pow(2)
+
+
+def _build_layer_ramp(
+    nlyr: int,
+    n_layers: int,
+    is_top: bool,
+    dtype: torch.dtype,
+    device: torch.device,
+) -> torch.Tensor:
+    ramp = torch.zeros((nlyr,), dtype=dtype, device=device)
+    n = max(min(int(n_layers), nlyr), 0)
+    if n <= 0:
+        return ramp
+
+    eta = torch.linspace(0.0, 1.0, n, dtype=dtype, device=device)
+    core = torch.sin(0.5 * math.pi * eta).pow(2)
+    if is_top:
+        ramp[nlyr - n :] = core
+    else:
+        ramp[:n] = torch.flip(core, dims=(0,))
+    return ramp
+
+
+def _build_sponge_ramp(
+    local_pres: torch.Tensor,
+    local_z: Optional[torch.Tensor],
+    thickness: float,
+    n_layers: int,
+    is_top: bool,
+) -> torch.Tensor:
+    nlyr = int(local_pres.shape[-1])
+
+    if (thickness > 0.0) and (local_z is not None):
+        zmin = float(local_z[0].item())
+        zmax = float(local_z[-1].item())
+        if is_top:
+            z_start = zmax - thickness
+            z_end = zmax
+        else:
+            z_start = zmin + thickness
+            z_end = zmin
+
+        ramp_1d = _sine2_ramp(local_z, z_start, z_end)
+        return ramp_1d.view(1, 1, nlyr).expand_as(local_pres)
+
+    ramp_1d = _build_layer_ramp(
+        nlyr=nlyr,
+        n_layers=n_layers,
+        is_top=is_top,
+        dtype=local_pres.dtype,
+        device=local_pres.device,
+    )
+    return ramp_1d.view(1, 1, nlyr).expand_as(local_pres)
 
 
 def _apply_velocity_drag(
@@ -836,12 +892,29 @@ def _apply_velocity_drag(
     if cfg.uniform_enabled and cfg.uniform_tau > 0.0:
         coeff[..., il : iu + 1] += 1.0 / cfg.uniform_tau
 
+    local_pres = pres[..., il : iu + 1]
+    local_z = cfg.z_levels
+    if local_z is not None:
+        local_z = local_z.to(device=local_pres.device, dtype=local_pres.dtype)
+
     if cfg.top_enabled and cfg.top_tau > 0.0:
-        ramp_top = _sine2_ramp(pres[..., il : iu + 1], cfg.top_p_start, cfg.top_p_end)
+        ramp_top = _build_sponge_ramp(
+            local_pres=local_pres,
+            local_z=local_z,
+            thickness=cfg.top_thickness,
+            n_layers=cfg.top_n_layers,
+            is_top=True,
+        )
         coeff[..., il : iu + 1] += ramp_top / cfg.top_tau
 
     if cfg.bottom_enabled and cfg.bottom_tau > 0.0:
-        ramp_bot = _sine2_ramp(pres[..., il : iu + 1], cfg.bottom_p_start, cfg.bottom_p_end)
+        ramp_bot = _build_sponge_ramp(
+            local_pres=local_pres,
+            local_z=local_z,
+            thickness=cfg.bottom_thickness,
+            n_layers=cfg.bottom_n_layers,
+            is_top=False,
+        )
         coeff[..., il : iu + 1] += ramp_bot / cfg.bottom_tau
 
     if cfg.coeff_max > 0.0:

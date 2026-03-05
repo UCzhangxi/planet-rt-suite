@@ -144,13 +144,13 @@ drag:
     tau: 0.0
   sponge_top:
     enabled: true
-    p_start: 2.0e4
-    p_end: 1.0e3
+    thickness: 0.0
+    n_layers: 6
     tau: 3.0e4
   sponge_bottom:
     enabled: true
-    p_start: 8.0e5
-    p_end: 3.0e6
+    thickness: 0.0
+    n_layers: 6
     tau: 3.0e4
   coeff_max: 0.0
 
