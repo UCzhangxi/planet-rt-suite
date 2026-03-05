@@ -1,0 +1,188 @@
+reference-state:
+  Tref: 0.
+  Pref: 1.e5
+
+# 1D local Cartesian dry-like atmosphere (vertical column)
+species:
+  - name: dry
+    composition: { H: 1.5, He: 0.15 }
+    cv_R: 2.5
+
+  - name: H2S
+    composition: { H: 2, S: 1 }
+    cv_R: 2.5
+    u0_R: 0.
+
+  - name: CH4
+    composition: { C: 1, H: 4 }
+    cv_R: 2.5
+    u0_R: 0.
+
+geometry:
+  type: cartesian
+
+  bounds:
+    x1min: 0.
+    x1max: 3.5e5
+    x2min: 0.
+    x2max: 1.
+    x3min: 0.
+    x3max: 1.
+
+  cells:
+    nx1: 80
+    nx2: 1
+    nx3: 1
+    nghost: 3
+
+# 1 process world size for slab layout
+distribute:
+  backend: gloo
+  layout: slab
+  nb2: 1
+  nb3: 1
+  verbose: false
+
+dynamics:
+  equation-of-state:
+    type: ideal-moist
+    density-floor: 1.e-10
+    pressure-floor: 1.e-10
+    tracer-floor: 1.e-12
+    limiter: true
+    max-iter: 30
+    ftol: 1.e-6
+
+  vertical-projection:
+    type: temperature
+    pressure-margin: 1.e-6
+
+  reconstruct:
+    vertical: { type: weno5, scale: true, shock: true }
+    horizontal: { type: weno5, scale: true, shock: true }
+
+  riemann-solver:
+    type: hllc
+
+boundary-condition:
+  internal:
+    solid-density: 1.e3
+    solid-pressure: 1.e9
+    max-iter: 5
+  external:
+    x1-inner: reflecting
+    x1-outer: reflecting
+    x2-inner: reflecting
+    x2-outer: reflecting
+    x3-inner: reflecting
+    x3-outer: reflecting
+
+integration:
+  type: rk3
+  cfl: 0.45
+  implicit-scheme: 0
+  nlim: -1
+  tlim: 1.728e10
+  ncycle_out: 10
+
+outputs:
+  - type: restart
+    dt: 8.64e6
+  - type: netcdf
+    variables: [prim]
+    dt: 8.64e5
+  - type: netcdf
+    variables: [thermo, path]
+    dt: 8.64e5
+  - type: netcdf
+    variables: [uov]
+    dt: 8.64e5
+
+forcing:
+  const-gravity:
+    grav1: -8.87
+
+problem:
+  Ts: 250.
+  Tmin: 52.
+  Ps: 5.e6
+
+  xH2S: 3.e-4
+  xCH4: 2.3e-2
+
+  obliquity_deg: 97.77
+  true_anomaly_deg: 0.0
+  orbital_period: 2.651e9
+  rotation_period: 62064.0
+  subsolar_lon0_deg: 0.0
+
+bottom-relaxation:
+  enabled: true
+  depth_levels: 2
+  tau_bottom: 5.0e4
+  tau_top: 1.0e5
+  target_temp: 250.
+
+radiative-transfer:
+  update_dt: 900.0
+  sw_surface_albedo: 0.0
+  lw_surface_albedo: 0.0
+  stellar_flux_nadir: 2.61
+  zenith_mode: nadir
+
+radiative-transfer-output:
+  enable_tau: true
+  enable_cell_flux: true
+  enable_toa_flux: true
+
+drag:
+  enabled: true
+  apply_to: [v1, v2, v3]
+  reference_wind: { v1: 0.0, v2: 0.0, v3: 0.0 }
+  uniform:
+    enabled: false
+    tau: 0.0
+  sponge_top:
+    enabled: true
+    p_start: 2.0e4
+    p_end: 1.0e3
+    tau: 3.0e4
+  sponge_bottom:
+    enabled: true
+    p_start: 8.0e5
+    p_end: 3.0e6
+    tau: 3.0e4
+  coeff_max: 0.0
+
+chemistry:
+  enable_kinetics: false
+
+opacities:
+  grey-sw:
+    type: jit
+    data: [placeholder_not_used_grey_sw.pt]
+    species: [dry, H2S, CH4]
+    jit_kwargs: [pres, temp]
+    nmom: 1
+    parameters: { kappa_a: 1.0e-2, kappa_b: -0.5, kappa_cut: 1.0e-4, w0: 0., g: 0. }
+
+  grey-lw:
+    type: jit
+    data: [placeholder_not_used_grey_lw.pt]
+    species: [dry, H2S, CH4]
+    jit_kwargs: [pres, temp]
+    nmom: 1
+    parameters: { kappa_a: 1.6e-8, kappa_b: 1.0, kappa_cut: 1.0e-4, w0: 0., g: 0. }
+
+bands:
+  - name: sw
+    range: [10000.0, 50000.0]
+    opacities: [grey-sw]
+    solver: toon
+    nwave: 1
+
+  - name: lw
+    range: [10.0, 10000.0]
+    opacities: [grey-lw]
+    solver: toon
+    nwave: 1
