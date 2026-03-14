@@ -14,7 +14,7 @@ from typing import Any, Optional, Tuple
 import torch
 import yaml
 import snapy
-from snapy import MeshBlock, MeshBlockOptions, kIDN, kIV1, kICY, kIPR
+from snapy import MeshBlock, MeshBlockOptions, kIDN, kIV1, kICY, kIPR, kConserved
 from kintera import Kinetics, KineticsOptions, ThermoX
 from paddle import evolve_kinetics, setup_profile
 
@@ -934,8 +934,9 @@ def _apply_velocity_drag(
         hydro_u[idx] += tendency * dt
 
 
-def apply_rt_forcing(eos, block_vars: dict[str, torch.Tensor], rt_state: RadiativeTransferState, dt: float) -> None:
+def apply_rt_forcing(eos, block: MeshBlock, block_vars: dict[str, torch.Tensor], rt_state: RadiativeTransferState, dt: float) -> None:
     block_vars["hydro_u"][kIPR, ..., rt_state.il : rt_state.iu + 1] += rt_state.last_heating * dt
+    block.apply_hydro_bc(block_vars["hydro_u"],type=kConserved)
     _apply_bottom_temp_relaxation(eos, block_vars, rt_state, dt)
     _apply_velocity_drag(block_vars, rt_state, dt)
 
@@ -1004,7 +1005,7 @@ def run_simulation(
         for stage in range(len(block.intg.stages)):
             block.forward(block_vars, dt, stage)
             update_rt_tendency_if_needed(block, eos, thermo_y, thermo_x, block_vars, current_time, rt_state)
-            apply_rt_forcing(eos, block_vars, rt_state, dt)
+            apply_rt_forcing(eos, block, block_vars, rt_state, dt)
 
         err = block.check_redo(block_vars)
         if err > 0:
