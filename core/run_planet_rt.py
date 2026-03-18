@@ -658,12 +658,28 @@ def _compute_rt_output_fields(
     shape_full = hydro_w[kIPR].shape
     out: dict[str, torch.Tensor] = {}
     if rt_state.output_cfg.enable_tau:
-        tau_sw = torch.zeros(shape_full, dtype=hydro_w.dtype, device=hydro_w.device)
-        tau_lw = torch.zeros(shape_full, dtype=hydro_w.dtype, device=hydro_w.device)
-        tau_sw[..., il : iu + 1] = tau_sw_layer.view(ny, nx, nlyr)
-        tau_lw[..., il : iu + 1] = tau_lw_layer.view(ny, nx, nlyr)
-        out["rt_tau_sw"] = tau_sw
-        out["rt_tau_lw"] = tau_lw
+        tau_sw_layer_full = torch.zeros(shape_full, dtype=hydro_w.dtype, device=hydro_w.device)
+        tau_lw_layer_full = torch.zeros(shape_full, dtype=hydro_w.dtype, device=hydro_w.device)
+
+        tau_sw_cum_top = torch.flip(
+            torch.cumsum(torch.flip(tau_sw_layer, dims=[1]), dim=1), dims=[1]
+        )
+        tau_lw_cum_top = torch.flip(
+            torch.cumsum(torch.flip(tau_lw_layer, dims=[1]), dim=1), dims=[1]
+        )
+
+        tau_sw_full = torch.zeros(shape_full, dtype=hydro_w.dtype, device=hydro_w.device)
+        tau_lw_full = torch.zeros(shape_full, dtype=hydro_w.dtype, device=hydro_w.device)
+
+        tau_sw_layer_full[..., il : iu + 1] = tau_sw_layer.view(ny, nx, nlyr)
+        tau_lw_layer_full[..., il : iu + 1] = tau_lw_layer.view(ny, nx, nlyr)
+        tau_sw_full[..., il : iu + 1] = tau_sw_cum_top.view(ny, nx, nlyr)
+        tau_lw_full[..., il : iu + 1] = tau_lw_cum_top.view(ny, nx, nlyr)
+
+        out["rt_tau_sw"] = tau_sw_full
+        out["rt_tau_lw"] = tau_lw_full
+        out["rt_tau_sw_layer"] = tau_sw_layer_full
+        out["rt_tau_lw_layer"] = tau_lw_layer_full
 
     if rt_state.output_cfg.enable_cell_flux:
         flx_sw_up = torch.zeros(shape_full, dtype=hydro_w.dtype, device=hydro_w.device)
