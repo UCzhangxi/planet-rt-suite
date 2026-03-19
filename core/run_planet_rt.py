@@ -169,8 +169,27 @@ def load_config(path: str) -> dict[str, Any]:
 
 
 def select_device(block: MeshBlock) -> torch.device:
-    if torch.cuda.is_available() and block.options.layout().backend() == "nccl":
-        return torch.device(block.device())
+    backend = str(block.options.layout().backend()).lower()
+    if backend == "nccl":
+        if not torch.cuda.is_available():
+            raise RuntimeError("NCCL backend requires CUDA, but no GPU is available.")
+
+        ngpu = torch.cuda.device_count()
+        local_rank_env = os.environ.get("LOCAL_RANK")
+        if local_rank_env is not None:
+            local_rank = int(local_rank_env)
+        else:
+            local_rank = int(snapy.distributed.get_local_rank())
+
+        if ngpu <= 0:
+            raise RuntimeError("NCCL backend requested but torch reports zero CUDA devices.")
+
+        if local_rank < 0 or local_rank >= ngpu:
+            local_rank = local_rank % ngpu
+
+        torch.cuda.set_device(local_rank)
+        return torch.device(f"cuda:{local_rank}")
+
     return torch.device("cpu")
 
 
