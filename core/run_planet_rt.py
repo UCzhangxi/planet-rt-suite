@@ -248,8 +248,12 @@ def initialize_atm(block: MeshBlock, config: dict[str, Any]) -> tuple[dict[str, 
 
 
 def _resolve_local_face_name(block: MeshBlock) -> str:
-    layout = snapy.distributed.get_layout()
-    rank = int(snapy.distributed.get_rank())
+    if hasattr(block, "get_layout"):
+        layout = block.get_layout()
+    else:
+        layout = snapy.distributed.get_layout(block)
+
+    rank = int(layout.options.rank())
     loc = layout.loc_of(rank)
     face_id = int(loc[2])
     return snapy.coord.get_cs_face_name(face_id)
